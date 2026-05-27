@@ -86,8 +86,12 @@ interface Repository extends Starrable {
     }
 }
 
-async function getUserInfo(gql: typeof graphql, { includeForks = false, includeOrgRepos = false }) {
-    const repositoriesContributedToQuery = includeOrgRepos ? `repositoriesContributedTo(first: 100) {
+async function getUserInfo(
+    gql: typeof graphql,
+    { includeForks = false, includeOrgRepos = false }
+) {
+    const repositoriesContributedToQuery = includeOrgRepos
+        ? `repositoriesContributedTo(first: 100) {
         totalCount
         nodes {
             stargazers {
@@ -103,10 +107,11 @@ async function getUserInfo(gql: typeof graphql, { includeForks = false, includeO
                 }
             }
         }
-    }` : `repositoriesContributedTo {
+    }`
+        : `repositoriesContributedTo {
         totalCount
-    }`;
-    
+    }`
+
     const query = `{
         viewer {
             createdAt
@@ -149,7 +154,7 @@ async function getUserInfo(gql: typeof graphql, { includeForks = false, includeO
         rateLimit { cost remaining resetAt }
     }`
 
-    console.log("github graphql: ", query);
+    console.log('github graphql: ', query)
 
     interface Result {
         viewer: {
@@ -204,7 +209,9 @@ async function getUserInfo(gql: typeof graphql, { includeForks = false, includeO
         contributionYears,
         gists: gists.totalCount,
         repositories: repositories.totalCount,
-        repositoryNodes: includeOrgRepos ? [...repositories.nodes, ...repositoriesContributedTo.nodes] : repositories.nodes,
+        repositoryNodes: includeOrgRepos
+            ? [...repositories.nodes, ...repositoriesContributedTo.nodes]
+            : repositories.nodes,
         repositoriesContributedTo: repositoriesContributedTo.totalCount,
         stars,
     }
