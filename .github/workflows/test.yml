@@ -3,6 +3,7 @@ on: # rebuild any PRs and main branch changes
   pull_request:
   push:
     branches:
+      - main
       - master
       - 'releases/*'
 
@@ -10,14 +11,18 @@ jobs:
   build: # make sure build/ci work properly
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
       - run: |
-          yarn
-          yarn ci
+          npm ci
+          npm run ci
   test: # make sure the action works on a clean machine without building
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: ./
