@@ -4481,13 +4481,18 @@ var TPL_STR;
     TPL_STR["REPOSITORIES_CONTRIBUTED_TO"] = "REPOSITORIES_CONTRIBUTED_TO";
     TPL_STR["STARS"] = "STARS";
 })(TPL_STR || (TPL_STR = {}));
-run().catch(error => core.setFailed(error.message));
+run().catch((error) => core.setFailed(getErrorMessage(error)));
+function getErrorMessage(error) {
+    return error instanceof Error
+        ? error.message
+        : `Unknown error: ${String(error)}`;
+}
 async function run() {
-    const token = core.getInput('token');
-    const template = core.getInput('template');
-    const readme = core.getInput('readme');
-    const includeForks = core.getInput('includeForks') === 'true';
-    const includeOrgRepos = core.getInput('includeOrgRepos') === 'true';
+    const token = core.getInput('token', { required: true });
+    const template = core.getInput('template', { required: true });
+    const readme = core.getInput('readme', { required: true });
+    const includeForks = core.getBooleanInput('includeForks');
+    const includeOrgRepos = core.getBooleanInput('includeOrgRepos');
     const gql = graphql_1.graphql.defaults({
         headers: { authorization: `token ${token}` },
     });
@@ -4508,7 +4513,8 @@ async function run() {
     await fs_1.promises.writeFile(readme, o);
 }
 async function getUserInfo(gql, { includeForks = false, includeOrgRepos = false }) {
-    const repositoriesContributedToQuery = includeOrgRepos ? `repositoriesContributedTo(first: 100) {
+    const repositoriesContributedToQuery = includeOrgRepos
+        ? `repositoriesContributedTo(first: 100) {
         totalCount
         nodes {
             stargazers {
@@ -4524,7 +4530,8 @@ async function getUserInfo(gql, { includeForks = false, includeOrgRepos = false 
                 }
             }
         }
-    }` : `repositoriesContributedTo {
+    }`
+        : `repositoriesContributedTo {
         totalCount
     }`;
     const query = `{
@@ -4568,8 +4575,15 @@ async function getUserInfo(gql, { includeForks = false, includeOrgRepos = false 
         }
         rateLimit { cost remaining resetAt }
     }`;
-    console.log("github graphql: ", query);
-    const { viewer: { createdAt, issues, pullRequests, contributionsCollection: { contributionYears }, gists, repositories, repositoriesContributedTo, }, } = await gql(query);
+    core.debug(`github graphql query: ${query}`);
+    let result;
+    try {
+        result = await gql(query);
+    }
+    catch (error) {
+        throw new Error(`Failed to fetch user info: ${getErrorMessage(error)}`);
+    }
+    const { viewer: { createdAt, issues, pullRequests, contributionsCollection: { contributionYears }, gists, repositories, repositoriesContributedTo, }, } = result;
     const accountAgeMS = Date.now() - new Date(createdAt).getTime();
     const accountAge = Math.floor(accountAgeMS / (1000 * 60 * 60 * 24 * 365.25));
     const stars = [...gists.nodes, ...repositories.nodes]
@@ -4582,7 +4596,9 @@ async function getUserInfo(gql, { includeForks = false, includeOrgRepos = false 
         contributionYears,
         gists: gists.totalCount,
         repositories: repositories.totalCount,
-        repositoryNodes: includeOrgRepos ? [...repositories.nodes, ...repositoriesContributedTo.nodes] : repositories.nodes,
+        repositoryNodes: includeOrgRepos
+            ? [...repositories.nodes, ...repositoriesContributedTo.nodes]
+            : repositories.nodes,
         repositoriesContributedTo: repositoriesContributedTo.totalCount,
         stars,
     };
@@ -4593,7 +4609,13 @@ async function getTotalCommits(gql, contributionYears) {
         query += `_${year}: contributionsCollection(from: "${getDateTime(year)}") { totalCommitContributions }`;
     }
     query += '}}';
-    const result = await gql(query);
+    let result;
+    try {
+        result = await gql(query);
+    }
+    catch (error) {
+        throw new Error(`Failed to fetch total commits: ${getErrorMessage(error)}`);
+    }
     return Object.keys(result.viewer)
         .map(key => result.viewer[key].totalCommitContributions)
         .reduce((total, current) => total + current, 0);
@@ -4604,7 +4626,13 @@ async function getTotalReviews(gql, contributionYears) {
         query += `_${year}: contributionsCollection(from: "${getDateTime(year)}") { totalPullRequestReviewContributions }`;
     }
     query += '}}';
-    const result = await gql(query);
+    let result;
+    try {
+        result = await gql(query);
+    }
+    catch (error) {
+        throw new Error(`Failed to fetch total reviews: ${getErrorMessage(error)}`);
+    }
     return Object.keys(result.viewer)
         .map(key => result.viewer[key].totalPullRequestReviewContributions)
         .reduce((total, current) => total + current, 0);

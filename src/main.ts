@@ -20,14 +20,20 @@ enum TPL_STR {
     STARS = 'STARS',
 }
 
-run().catch(error => core.setFailed(error.message))
+run().catch((error: unknown) => core.setFailed(getErrorMessage(error)))
+
+function getErrorMessage(error: unknown): string {
+    return error instanceof Error
+        ? error.message
+        : `Unknown error: ${String(error)}`
+}
 
 async function run(): Promise<void> {
-    const token = core.getInput('token')
-    const template = core.getInput('template')
-    const readme = core.getInput('readme')
-    const includeForks = core.getInput('includeForks') === 'true'
-    const includeOrgRepos = core.getInput('includeOrgRepos') === 'true'
+    const token = core.getInput('token', { required: true })
+    const template = core.getInput('template', { required: true })
+    const readme = core.getInput('readme', { required: true })
+    const includeForks = core.getBooleanInput('includeForks')
+    const includeOrgRepos = core.getBooleanInput('includeOrgRepos')
 
     const gql = graphql.defaults({
         headers: { authorization: `token ${token}` },
@@ -154,7 +160,7 @@ async function getUserInfo(
         rateLimit { cost remaining resetAt }
     }`
 
-    console.log('github graphql: ', query)
+    core.debug(`github graphql query: ${query}`)
 
     interface Result {
         viewer: {
@@ -183,6 +189,13 @@ async function getUserInfo(
         }
     }
 
+    let result: Result
+    try {
+        result = await gql<Result>(query)
+    } catch (error: unknown) {
+        throw new Error(`Failed to fetch user info: ${getErrorMessage(error)}`)
+    }
+
     const {
         viewer: {
             createdAt,
@@ -193,7 +206,7 @@ async function getUserInfo(
             repositories,
             repositoriesContributedTo,
         },
-    } = await gql<Result>(query)
+    } = result
 
     const accountAgeMS = Date.now() - new Date(createdAt).getTime()
     const accountAge = Math.floor(accountAgeMS / (1000 * 60 * 60 * 24 * 365.25))
@@ -233,7 +246,14 @@ async function getTotalCommits(
         viewer: Record<string, { totalCommitContributions: number }>
     }
 
-    const result = await gql<Result>(query)
+    let result: Result
+    try {
+        result = await gql<Result>(query)
+    } catch (error: unknown) {
+        throw new Error(
+            `Failed to fetch total commits: ${getErrorMessage(error)}`
+        )
+    }
     return Object.keys(result.viewer)
         .map(key => result.viewer[key].totalCommitContributions)
         .reduce((total, current) => total + current, 0)
@@ -255,7 +275,14 @@ async function getTotalReviews(
         viewer: Record<string, { totalPullRequestReviewContributions: number }>
     }
 
-    const result = await gql<Result>(query)
+    let result: Result
+    try {
+        result = await gql<Result>(query)
+    } catch (error: unknown) {
+        throw new Error(
+            `Failed to fetch total reviews: ${getErrorMessage(error)}`
+        )
+    }
     return Object.keys(result.viewer)
         .map(key => result.viewer[key].totalPullRequestReviewContributions)
         .reduce((total, current) => total + current, 0)
@@ -300,7 +327,11 @@ function replaceLanguageTemplate(input: string, repositories: Repository[]) {
     const rStart = buildRegex(TPL_STR.LANGUAGE_TEMPLATE_START, true)
     const rEnd = buildRegex(TPL_STR.LANGUAGE_TEMPLATE_END, true)
 
-    const replacements = []
+    const replacements: Array<{
+        start: number
+        end: number
+        replacement: string
+    }> = []
     for (const match of input.matchAll(rStart)) {
         if (match.index === undefined) continue
         const opts = match.groups?.opts
